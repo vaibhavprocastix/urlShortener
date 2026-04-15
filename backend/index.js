@@ -43,8 +43,14 @@ function encodeBase62(num){
 
 app.post("/shorten", shortenLimiter, async(req,res) => {
     try{
-        const { url } = req.body;
+        const { url, expiresInDays } = req.body;
         
+        let expiresAt = null;
+        if(expiresInDays){
+            expiresAt = new Date();;
+            expiresAt.setDate(expiresAt.getDate() + expiresInDays)
+        }
+
         if(!url) return res.status(400).send("URL required");
         try{
             new URL(url);
@@ -58,7 +64,7 @@ app.post("/shorten", shortenLimiter, async(req,res) => {
             return res.json({shortUrl: `${process.env.BASE_URL}/${existing.rows[0].short_code}`});
         }
 
-        const result = await pool.query("INSERT INTO urls(original_url, short_code) VALUES($1,'') RETURNING id",[url]);
+        const result = await pool.query("INSERT INTO urls(original_url, short_code, expires_at) VALUES($1,'',$2) RETURNING id",[url,expiresAt]);
 
         // console.log("Post Result ",result)
         const id = result.rows[0].id;
@@ -75,7 +81,7 @@ app.post("/shorten", shortenLimiter, async(req,res) => {
 app.get("/:code",async(req,res) => {
     try{
         const { code } = req.params;
-        const result = await pool.query("SELECT * FROM urls WHERE short_code=$1",[code]);
+        const result = await pool.query("SELECT * FROM urls WHERE short_code=$1 AND (expires_at IS NULL OR expires_at > NOW())",[code]);
 
         // console.log("Get Result ",result)
         if(result.rows.length === 0){
